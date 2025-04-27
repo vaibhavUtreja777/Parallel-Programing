@@ -1,0 +1,75 @@
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <omp.h>
+
+#define NUM_BINS 10  // Number of histogram bins
+#define NUM_THREADS 4 // Number of OpenMP threads
+
+// Function to compute the bin index for a given value
+int getBinIndex(int value, int minValue, int maxValue) {
+    return (NUM_BINS * (value - minValue)) / (maxValue - minValue + 1);
+}
+
+// Parallel Histogram Sort
+void histogramSort(std::vector<int>& arr) {
+    int n = arr.size();
+    if (n == 0) return;
+
+    int minValue = *std::min_element(arr.begin(), arr.end());
+    int maxValue = *std::max_element(arr.begin(), arr.end());
+
+    // Step 1: Compute histogram
+    std::vector<int> histogram(NUM_BINS, 0);
+    #pragma omp parallel for num_threads(NUM_THREADS) reduction(+:histogram[:NUM_BINS])
+    for (int i = 0; i < n; i++) {
+        int binIndex = getBinIndex(arr[i], minValue, maxValue);
+        histogram[binIndex]++;
+    }
+
+    // Step 2: Compute prefix sum (cumulative sum)
+    std::vector<int> prefixSum(NUM_BINS, 0);
+    prefixSum[0] = histogram[0];
+    for (int i = 1; i < NUM_BINS; i++) {
+        prefixSum[i] = prefixSum[i - 1] + histogram[i];
+    }
+
+    // Step 3: Distribute elements into bins
+    std::vector<std::vector<int>> bins(NUM_BINS);
+    #pragma omp parallel for num_threads(NUM_THREADS)
+    for (int i = 0; i < n; i++) {
+        int binIndex = getBinIndex(arr[i], minValue, maxValue);
+        #pragma omp critical
+        bins[binIndex].push_back(arr[i]);
+    }
+
+    // Step 4: Sort each bin in parallel
+    #pragma omp parallel for num_threads(NUM_THREADS)
+    for (int i = 0; i < NUM_BINS; i++) {
+        std::sort(bins[i].begin(), bins[i].end());
+    }
+
+    // Step 5: Merge sorted bins back to the original array
+    int index = 0;
+    for (int i = 0; i < NUM_BINS; i++) {
+        for (int val : bins[i]) {
+            arr[index++] = val;
+        }
+    }
+}
+
+int main() {
+    std::vector<int> arr = {23, 45, 12, 89, 5, 34, 78, 11, 90, 67, 55, 32, 43, 21};
+
+    std::cout << "Original array: ";
+    for (int num : arr) std::cout << num << " ";
+    std::cout << "\n";
+
+    histogramSort(arr);
+
+    std::cout << "Sorted array: ";
+    for (int num : arr) std::cout << num << " ";
+    std::cout << "\n";
+
+    return 0;
+}
