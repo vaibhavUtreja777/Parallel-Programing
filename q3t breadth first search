@@ -1,0 +1,98 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <omp.h>
+
+using namespace std;
+
+class Graph {
+    int V; // Number of vertices
+    vector<vector<int>> adj; // Adjacency list
+
+public:
+    Graph(int vertices) {
+        V = vertices;
+        adj.resize(vertices);
+    }
+
+    void addEdge(int u, int v) {
+        if (u >= 0 && u < V && v >= 0 && v < V) {
+            adj[u].push_back(v);
+            adj[v].push_back(u); // For undirected graph
+        } else {
+            cout << "Invalid edge! Vertex out of range." << endl;
+        }
+    }
+
+    void parallelBFS(int start) {
+        if (start < 0 || start >= V) {
+            cout << "Invalid start node!" << endl;
+            return;
+        }
+
+        vector<bool> visited(V, false);
+        queue<int> q;
+
+        visited[start] = true;
+        q.push(start);
+
+        cout << "Parallel BFS Traversal: ";
+
+        while (!q.empty()) {
+            int level_size = q.size();
+            vector<int> level_nodes;
+
+            for (int i = 0; i < level_size; i++) {
+                int node = q.front();
+                q.pop();
+                cout << node << " ";
+                level_nodes.push_back(node);
+            }
+
+            // Parallel processing of neighbors at the current level
+            #pragma omp parallel for
+            for (int i = 0; i < level_nodes.size(); i++) {
+                int node = level_nodes[i];
+                for (int j = 0; j < adj[node].size(); j++) {
+                    int neighbor = adj[node][j];
+                    if (!visited[neighbor]) {
+                        #pragma omp critical
+                        {
+                            if (!visited[neighbor]) { // Double-check inside critical section
+                                visited[neighbor] = true;
+                                q.push(neighbor);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        cout << endl;
+    }
+};
+
+int main() {
+    int V, E;
+    cout << "Enter the number of vertices: ";
+    cin >> V;
+
+    Graph g(V);
+
+    cout << "Enter the number of edges: ";
+    cin >> E;
+
+    cout << "Enter " << E << " edges (u v) where 0 <= u, v < " << V << ":" << endl;
+    for (int i = 0; i < E; i++) {
+        int u, v;
+        cin >> u >> v;
+        g.addEdge(u, v);
+    }
+
+    int startNode;
+    cout << "Enter the starting node for BFS: ";
+    cin >> startNode;
+
+    g.parallelBFS(startNode);
+
+    return 0;
+}
